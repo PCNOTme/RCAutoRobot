@@ -1,3 +1,13 @@
+# Windows:
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.mxproject
+*.txt
+*.o
+*.crf
+*.d
+Drivers
 # Prerequisites
 *.d
 
