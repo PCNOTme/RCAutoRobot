@@ -60,9 +60,14 @@
 #include "bmp.h"
 #include "Xunji.h"
 #include "BJDJ.h"
+#include "mpu6050.h"
 /* USER CODE END Includes */
 
 /* Private variables ---------------------------------------------------------*/
+I2C_HandleTypeDef hi2c1;
+DMA_HandleTypeDef hdma_i2c1_rx;
+DMA_HandleTypeDef hdma_i2c1_tx;
+
 SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim1;
@@ -74,11 +79,28 @@ TIM_HandleTypeDef htim6;
 TIM_HandleTypeDef htim8;
 TIM_HandleTypeDef htim11;
 
+UART_HandleTypeDef huart1;
+
 osThreadId defaultTaskHandle;
 osSemaphoreId SPD_overHandle;
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
+#ifdef __GNUC__
+/* With GCC, small printf (option LD Linker->Libraries->Small printf
+   set to 'Yes') calls __io_putchar() */
+#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
+#else
+#define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
+#endif /* __GNUC__ */
+
+int fputc(int ch, FILE *f)
+
+{
+		 while(HAL_UART_GetState(&huart1) == HAL_UART_STATE_BUSY_TX){}
+		 HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, 100);
+		 return ch;
+}
 
 //大部分变量存放在CCMRAM！！！！！！
 
@@ -92,14 +114,17 @@ osSemaphoreId SPD_overHandle;
 //	  tasks.o(+RW +ZI)
 //  }
 
- 
+osSemaphoreId DMP_overHandle;
+
 osThreadId XunjiTaskHandle;
 osThreadId MotoTaskHandle;
+osThreadId mpu6050TaskHandle;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM11_Init(void);
 static void MX_TIM4_Init(void);
@@ -109,6 +134,8 @@ static void MX_TIM3_Init(void);
 static void MX_TIM8_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM6_Init(void);
+static void MX_USART1_UART_Init(void);
+static void MX_I2C1_Init(void);
 void StartDefaultTask(void const * argument);
 
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
@@ -118,6 +145,7 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 /* Private function prototypes -----------------------------------------------*/
 extern void XunjiTask(void const * argument);
 extern void MotoTask(void const * argument);
+extern void mpu6050Task(void const * argument);
 /* USER CODE END PFP */
 
 /* USER CODE BEGIN 0 */
@@ -154,6 +182,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_SPI1_Init();
   MX_TIM11_Init();
   MX_TIM4_Init();
@@ -163,8 +192,10 @@ int main(void)
   MX_TIM8_Init();
   MX_TIM2_Init();
   MX_TIM6_Init();
+  MX_USART1_UART_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-
+  
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -191,10 +222,12 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
-  osThreadDef(XunjiTask, XunjiTask, osPriorityNormal, 0, 256);
-  XunjiTaskHandle = osThreadCreate(osThread(XunjiTask), NULL);	
-  osThreadDef(MotoTask, MotoTask, osPriorityNormal, 0, 256);
-  MotoTaskHandle = osThreadCreate(osThread(MotoTask), NULL);	
+//  osThreadDef(XunjiTask, XunjiTask, osPriorityNormal, 0, 256);
+//  XunjiTaskHandle = osThreadCreate(osThread(XunjiTask), NULL);	
+//  osThreadDef(MotoTask, MotoTask, osPriorityNormal, 0, 256);
+//  MotoTaskHandle = osThreadCreate(osThread(MotoTask), NULL);
+//  osThreadDef(mpu6050Task, mpu6050Task, osPriorityNormal, 0, 256);
+//  mpu6050TaskHandle = osThreadCreate(osThread(mpu6050Task), NULL);  
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_QUEUES */
@@ -276,6 +309,26 @@ void SystemClock_Config(void)
 
   /* SysTick_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(SysTick_IRQn, 15, 0);
+}
+
+/* I2C1 init function */
+static void MX_I2C1_Init(void)
+{
+
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.ClockSpeed = 400000;
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
 }
 
 /* SPI1 init function */
@@ -600,6 +653,43 @@ static void MX_TIM11_Init(void)
 
 }
 
+/* USART1 init function */
+static void MX_USART1_UART_Init(void)
+{
+
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+}
+
+/** 
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void) 
+{
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Stream0_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream0_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream0_IRQn);
+  /* DMA1_Stream6_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream6_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream6_IRQn);
+
+}
+
 /** Configure pins as 
         * Analog 
         * Input 
@@ -670,6 +760,16 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : PB5 */
+  GPIO_InitStruct.Pin = GPIO_PIN_5;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 6, 0);
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+
 }
 
 /* USER CODE BEGIN 4 */
@@ -682,10 +782,25 @@ void StartDefaultTask(void const * argument)
 
   /* USER CODE BEGIN 5 */
   /* Infinite loop */
+	HAL_NVIC_DisableIRQ(EXTI9_5_IRQn);
+	osDelay(200);	
+	DMP_Init();
+	osDelay(7000);
+	osSemaphoreDef(DMP_over);
+	DMP_overHandle = osSemaphoreCreate(osSemaphore(DMP_over), 1);
+	
+  osThreadDef(XunjiTask, XunjiTask, osPriorityNormal, 0, 256);
+  XunjiTaskHandle = osThreadCreate(osThread(XunjiTask), NULL);
+	
+  osThreadDef(MotoTask, MotoTask, osPriorityNormal, 0, 256);
+  MotoTaskHandle = osThreadCreate(osThread(MotoTask), NULL);
+	
+  osThreadDef(mpu6050Task, mpu6050Task, osPriorityNormal, 0, 256);
+  mpu6050TaskHandle = osThreadCreate(osThread(mpu6050Task), NULL); 
   for(;;)
   {
 
-	  test();
+	 test_BJDJ();
     osDelay(500);
   }
   /* USER CODE END 5 */ 
@@ -718,7 +833,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		__HAL_TIM_SetCounter(&htim2,0);
 		__HAL_TIM_SetCounter(&htim5,0); //清零计数
 
-		osSemaphoreRelease(SPD_overHandle); //释放二值信号量
+		if(SPD_overHandle!=NULL) osSemaphoreRelease(SPD_overHandle); //释放二值信号量
 //			spd.PWM_Duty1 = LocPIDCalc(spd.SPD1*40/209.0,&pid1);
 //			spd.PWM_Duty2 = LocPIDCalc(spd.SPD2*40/209.0,&pid2);
 //			spd.PWM_Duty3 = LocPIDCalc(spd.SPD3*40/209.0,&pid3);

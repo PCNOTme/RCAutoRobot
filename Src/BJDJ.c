@@ -45,7 +45,7 @@ void Pulse_output(uint32_t Cycle,uint32_t Pulse_Num)
 }
 
 	
-void test()
+void test_BJDJ()
 {  PulseNum_Over = 0;
 	//HAL_TIM_Base_Start_IT(&htim4);
 	HAL_TIM_PWM_Start(&htim3,TIM_CHANNEL_1);
