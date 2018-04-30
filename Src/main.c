@@ -753,7 +753,7 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+//#define MPU6050
 /* USER CODE END 4 */
 
 /* StartDefaultTask function */
@@ -762,10 +762,10 @@ void StartDefaultTask(void const * argument)
 
   /* USER CODE BEGIN 5 */
   /* Infinite loop */
-	HAL_NVIC_DisableIRQ(EXTI9_5_IRQn);
-	osDelay(200);
 	LCD_init(); //初始化液晶    
 	LCD_clear();
+#ifdef MPU6050	
+	HAL_NVIC_DisableIRQ(EXTI9_5_IRQn);
 	DMP_Init();
 	osDelay(500);
 	osSemaphoreDef(DMP_over);
@@ -774,6 +774,7 @@ void StartDefaultTask(void const * argument)
   osThreadDef(mpu6050Task, mpu6050Task, osPriorityHigh, 0, 256);
   mpu6050TaskHandle = osThreadCreate(osThread(mpu6050Task),NULL); 
   osDelay(8000);
+#endif	
   osThreadDef(XunjiTask, XunjiTask, osPriorityAboveNormal, 0, 256);
   XunjiTaskHandle = osThreadCreate(osThread(XunjiTask), NULL);
   osThreadDef(MotoTask, MotoTask, osPriorityRealtime, 0, 256);
@@ -823,9 +824,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	else if(htim->Instance == TIM6)
 	{  
 		
-		spd.SPD1 = __HAL_TIM_GetCounter(&htim1);
+		spd.SPD1 = __HAL_TIM_GetCounter(&htim5);
 		spd.SPD2 = __HAL_TIM_GetCounter(&htim2);
-		spd.SPD3 = __HAL_TIM_GetCounter(&htim5);
+		spd.SPD3 = __HAL_TIM_GetCounter(&htim1);
 		__HAL_TIM_SetCounter(&htim1,0);
 		__HAL_TIM_SetCounter(&htim2,0);
 		__HAL_TIM_SetCounter(&htim5,0); //清零计数
