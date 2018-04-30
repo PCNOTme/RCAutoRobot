@@ -9,6 +9,7 @@
 "rczhidong\bjdj.o"
 "rczhidong\oled.o"
 "rczhidong\xunji.o"
+"rczhidong\nokia_5110.o"
 "rczhidong\moto.o"
 "rczhidong\mpu6050.o"
 "rczhidong\system_stm32f4xx.o"

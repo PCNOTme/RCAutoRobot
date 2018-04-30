@@ -67,8 +67,6 @@
 #define ECHO_1B_GPIO_Port GPIOA
 #define DIR_Pin GPIO_PIN_4
 #define DIR_GPIO_Port GPIOA
-#define BJDJ_pule_Pin GPIO_PIN_6
-#define BJDJ_pule_GPIO_Port GPIOA
 #define LCD_DC_Pin GPIO_PIN_4
 #define LCD_DC_GPIO_Port GPIOC
 #define LCD_CE_Pin GPIO_PIN_5
@@ -101,6 +99,11 @@
 #define ECHO_2A_GPIO_Port GPIOA
 #define ECHO_2B_Pin GPIO_PIN_3
 #define ECHO_2B_GPIO_Port GPIOB
+#define BJDJ_pule_Pin GPIO_PIN_4
+#define BJDJ_pule_GPIO_Port GPIOB
+#define INT_Pin GPIO_PIN_5
+#define INT_GPIO_Port GPIOB
+#define INT_EXTI_IRQn EXTI9_5_IRQn
 
 /* ########################## Assert Selection ############################## */
 /**

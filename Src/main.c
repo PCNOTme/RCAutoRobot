@@ -52,11 +52,11 @@
 #include "cmsis_os.h"
 
 /* USER CODE BEGIN Includes */
-//#include "nokia_5110.h"
-//#include "bmp_pixel.h"
+#include "nokia_5110.h"
+#include "bmp_pixel.h"
 #include "Moto.h"
 //#include "pidcontoller.h"
-#include "oled.h"
+//#include "oled.h"
 #include "bmp.h"
 #include "Xunji.h"
 #include "BJDJ.h"
@@ -65,8 +65,6 @@
 
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
-DMA_HandleTypeDef hdma_i2c1_rx;
-DMA_HandleTypeDef hdma_i2c1_tx;
 
 SPI_HandleTypeDef hspi1;
 
@@ -124,7 +122,6 @@ osThreadId mpu6050TaskHandle;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_DMA_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM11_Init(void);
 static void MX_TIM4_Init(void);
@@ -182,7 +179,6 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_DMA_Init();
   MX_SPI1_Init();
   MX_TIM11_Init();
   MX_TIM4_Init();
@@ -209,6 +205,8 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
   /* add semaphores, ... */
+  	osSemaphoreDef(DMP_over);
+	DMP_overHandle = osSemaphoreCreate(osSemaphore(DMP_over), 1);
   /* USER CODE END RTOS_SEMAPHORES */
 
   /* USER CODE BEGIN RTOS_TIMERS */
@@ -343,7 +341,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -672,24 +670,6 @@ static void MX_USART1_UART_Init(void)
 
 }
 
-/** 
-  * Enable DMA controller clock
-  */
-static void MX_DMA_Init(void) 
-{
-  /* DMA controller clock enable */
-  __HAL_RCC_DMA1_CLK_ENABLE();
-
-  /* DMA interrupt init */
-  /* DMA1_Stream0_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Stream0_IRQn, 5, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Stream0_IRQn);
-  /* DMA1_Stream6_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Stream6_IRQn, 5, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Stream6_IRQn);
-
-}
-
 /** Configure pins as 
         * Analog 
         * Input 
@@ -723,12 +703,12 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOD, IN42_Pin|IN32_Pin|IN22_Pin|IN12_Pin 
                           |IN21_Pin|IN11_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : TCRT_Read_Pin LCD_DC_Pin */
-  GPIO_InitStruct.Pin = TCRT_Read_Pin|LCD_DC_Pin;
+  /*Configure GPIO pin : TCRT_Read_Pin */
+  GPIO_InitStruct.Pin = TCRT_Read_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+  HAL_GPIO_Init(TCRT_Read_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : DIR_Pin */
   GPIO_InitStruct.Pin = DIR_Pin;
@@ -737,12 +717,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(DIR_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : LCD_CE_Pin */
-  GPIO_InitStruct.Pin = LCD_CE_Pin;
+  /*Configure GPIO pins : LCD_DC_Pin LCD_CE_Pin */
+  GPIO_InitStruct.Pin = LCD_DC_Pin|LCD_CE_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  HAL_GPIO_Init(LCD_CE_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pin : LCD_RST_Pin */
   GPIO_InitStruct.Pin = LCD_RST_Pin;
@@ -760,11 +740,11 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PB5 */
-  GPIO_InitStruct.Pin = GPIO_PIN_5;
+  /*Configure GPIO pin : INT_Pin */
+  GPIO_InitStruct.Pin = INT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(INT_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI9_5_IRQn, 6, 0);
@@ -783,25 +763,42 @@ void StartDefaultTask(void const * argument)
   /* USER CODE BEGIN 5 */
   /* Infinite loop */
 	HAL_NVIC_DisableIRQ(EXTI9_5_IRQn);
-	osDelay(200);	
+	osDelay(200);
+	LCD_init(); //初始化液晶    
+	LCD_clear();
 	DMP_Init();
-	osDelay(7000);
+	osDelay(500);
 	osSemaphoreDef(DMP_over);
 	DMP_overHandle = osSemaphoreCreate(osSemaphore(DMP_over), 1);
 	
-  osThreadDef(XunjiTask, XunjiTask, osPriorityNormal, 0, 256);
+  osThreadDef(mpu6050Task, mpu6050Task, osPriorityHigh, 0, 256);
+  mpu6050TaskHandle = osThreadCreate(osThread(mpu6050Task),NULL); 
+  osDelay(8000);
+  osThreadDef(XunjiTask, XunjiTask, osPriorityAboveNormal, 0, 256);
   XunjiTaskHandle = osThreadCreate(osThread(XunjiTask), NULL);
-	
-  osThreadDef(MotoTask, MotoTask, osPriorityNormal, 0, 256);
+  osThreadDef(MotoTask, MotoTask, osPriorityRealtime, 0, 256);
   MotoTaskHandle = osThreadCreate(osThread(MotoTask), NULL);
-	
-  osThreadDef(mpu6050Task, mpu6050Task, osPriorityNormal, 0, 256);
-  mpu6050TaskHandle = osThreadCreate(osThread(mpu6050Task), NULL); 
+  osDelay(500);
+
+  static char temp[14];
   for(;;)
   {
-
-	 test_BJDJ();
-    osDelay(500);
+	  //for(uint8_t i = 0;i<14;i++) temp[i] = ' ';
+		//LCD_write_english_string(7*6,0,"       "); 
+	   sprintf(temp, "Yaw:% .3f  " , Yaw);
+		LCD_write_english_string(0,0,temp);
+	  
+		LCD_write_english_string(0,1," M1   M2   M3");
+		sprintf(temp, "% 4d % 4d % 4d" , spd.SPD1,spd.SPD2,spd.SPD3);  
+		LCD_write_english_string(0,2,temp);
+      sprintf(temp, "% 4d % 4d % 4d" , pid1.SetPoint,pid2.SetPoint,pid3.SetPoint);   
+	   LCD_write_english_string(0,3,temp);
+	  
+		//LCD_write_english_string(0,3," Nokia5110 LCD");
+		//LCD_write_byte(0x0d, 0); //屏幕颜色反转
+		LCD_write_chinese_string(12,4,12,4,0,5);  
+	 //test_BJDJ();
+    osDelay(200);
   }
   /* USER CODE END 5 */ 
 }

@@ -54,7 +54,7 @@ void LCD_init(void)
     LCD_write_byte(0x21, 0);	// 使用扩展命令设置LCD模式
     LCD_write_byte(0xc8, 0);	// 设置偏置电压
     LCD_write_byte(0x06, 0);	// 温度校正
-    LCD_write_byte(0x13, 0);	// 1:48
+    LCD_write_byte(0x12, 0);	// 1:48
     LCD_write_byte(0x20, 0);	// 使用基本命令
     LCD_clear();	        // 清屏
     LCD_write_byte(0x0c, 0);	// 设定显示模式，正常显示
@@ -219,6 +219,7 @@ void LCD_write_byte(unsigned char dat, unsigned char command)
     //unsigned char i;
     //PORTB &= ~LCD_CE ;		        // 使能LCD
     //LCD_CE = 0;
+	  //osDelay(1);
     HAL_GPIO_WritePin(LCD_CE_GPIO_Port,LCD_CE_Pin,GPIO_PIN_RESET);
     if (command == 0)
      // PORTB &= ~LCD_DC ;	        // 传送命令
