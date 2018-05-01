@@ -67,6 +67,7 @@
 I2C_HandleTypeDef hi2c1;
 
 SPI_HandleTypeDef hspi1;
+DMA_HandleTypeDef hdma_spi1_tx;
 
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
@@ -78,6 +79,9 @@ TIM_HandleTypeDef htim8;
 TIM_HandleTypeDef htim11;
 
 UART_HandleTypeDef huart1;
+UART_HandleTypeDef huart2;
+DMA_HandleTypeDef hdma_usart2_rx;
+DMA_HandleTypeDef hdma_usart2_tx;
 
 osThreadId defaultTaskHandle;
 osSemaphoreId SPD_overHandle;
@@ -117,11 +121,16 @@ osSemaphoreId DMP_overHandle;
 osThreadId XunjiTaskHandle;
 osThreadId MotoTaskHandle;
 osThreadId mpu6050TaskHandle;
+
+extern osPoolId  mpool;
+extern osMessageQId MotoQueues; //电机编码器数值队列 spd1 spd2 spd3
+extern osMessageQId MotoSetQueues; //电机速度数值设置队列 setpiont1
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM11_Init(void);
 static void MX_TIM4_Init(void);
@@ -133,6 +142,7 @@ static void MX_TIM2_Init(void);
 static void MX_TIM6_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_USART2_UART_Init(void);
 void StartDefaultTask(void const * argument);
 
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
@@ -179,6 +189,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_SPI1_Init();
   MX_TIM11_Init();
   MX_TIM4_Init();
@@ -190,6 +201,7 @@ int main(void)
   MX_TIM6_Init();
   MX_USART1_UART_Init();
   MX_I2C1_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
   
   /* USER CODE END 2 */
@@ -230,6 +242,7 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
+
   /* USER CODE END RTOS_QUEUES */
  
 
@@ -670,6 +683,47 @@ static void MX_USART1_UART_Init(void)
 
 }
 
+/* USART2 init function */
+static void MX_USART2_UART_Init(void)
+{
+
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 921600;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+}
+
+/** 
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void) 
+{
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA2_CLK_ENABLE();
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Stream5_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream5_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream5_IRQn);
+  /* DMA1_Stream6_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream6_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream6_IRQn);
+  /* DMA2_Stream3_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream3_IRQn);
+
+}
+
 /** Configure pins as 
         * Analog 
         * Input 
@@ -747,13 +801,13 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(INT_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 6, 0);
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
 }
 
 /* USER CODE BEGIN 4 */
-//#define MPU6050
+#define MPU6050
 /* USER CODE END 4 */
 
 /* StartDefaultTask function */
@@ -764,6 +818,7 @@ void StartDefaultTask(void const * argument)
   /* Infinite loop */
 	LCD_init(); //初始化液晶    
 	LCD_clear();
+   LCD_write_chinese_string(12,4,12,4,0,5);  
 #ifdef MPU6050	
 	HAL_NVIC_DisableIRQ(EXTI9_5_IRQn);
 	DMP_Init();
@@ -775,9 +830,10 @@ void StartDefaultTask(void const * argument)
   mpu6050TaskHandle = osThreadCreate(osThread(mpu6050Task),NULL); 
   osDelay(8000);
 #endif	
-  osThreadDef(XunjiTask, XunjiTask, osPriorityAboveNormal, 0, 256);
+  osThreadDef(XunjiTask, XunjiTask, osPriorityRealtime, 0, 256);
   XunjiTaskHandle = osThreadCreate(osThread(XunjiTask), NULL);
-  osThreadDef(MotoTask, MotoTask, osPriorityRealtime, 0, 256);
+  osDelay(10);
+  osThreadDef(MotoTask, MotoTask, osPriorityHigh, 0, 256);
   MotoTaskHandle = osThreadCreate(osThread(MotoTask), NULL);
   osDelay(500);
 
@@ -823,15 +879,18 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   /* USER CODE BEGIN Callback 1 */
 	else if(htim->Instance == TIM6)
 	{  
-		
-		spd.SPD1 = __HAL_TIM_GetCounter(&htim5);
-		spd.SPD2 = __HAL_TIM_GetCounter(&htim2);
-		spd.SPD3 = __HAL_TIM_GetCounter(&htim1);
+		SPD *MotoSpdX;
+		MotoSpdX = osPoolAlloc(mpool); //系统分配内存 存储数据，跳出中断数据不丢失
+		MotoSpdX->SPD1 = __HAL_TIM_GetCounter(&htim5);
+		MotoSpdX->SPD2 = __HAL_TIM_GetCounter(&htim2);
+		MotoSpdX->SPD3 = __HAL_TIM_GetCounter(&htim1);
 		__HAL_TIM_SetCounter(&htim1,0);
 		__HAL_TIM_SetCounter(&htim2,0);
 		__HAL_TIM_SetCounter(&htim5,0); //清零计数
-
-		if(SPD_overHandle!=NULL) osSemaphoreRelease(SPD_overHandle); //释放二值信号量
+      
+		osMessagePut(MotoQueues, (uint32_t)MotoSpdX, 100);
+		
+		//if(SPD_overHandle!=NULL) osSemaphoreRelease(SPD_overHandle); //释放二值信号量
 //			spd.PWM_Duty1 = LocPIDCalc(spd.SPD1*40/209.0,&pid1);
 //			spd.PWM_Duty2 = LocPIDCalc(spd.SPD2*40/209.0,&pid2);
 //			spd.PWM_Duty3 = LocPIDCalc(spd.SPD3*40/209.0,&pid3);
